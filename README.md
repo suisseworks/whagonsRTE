@@ -1,23 +1,23 @@
-# whagonsRLE
+# whagonsRTE
 
-A Go implementation of real-time database synchronization using SockJS WebSockets. Built for **whagons** to maintain consistent sync between PostgreSQL tables and IndexedDB data with minimal data transfer for instant frontend querying and rendering.
+A Go implementation of real-time database synchronization using native WebSockets. Built for **whagons** to maintain consistent sync between PostgreSQL tables and IndexedDB data with minimal data transfer for instant frontend querying and rendering.
 
 ## 🚀 Installation
 
 ### Standard Installation
 ```bash
-go install github.com/suisseworks/whagonsRLE@latest
+go install github.com/suisseworks/whagonsRTE@latest
 ```
 
 ### If You Encounter Checksum Issues
 For newly published modules, you may need to skip checksum verification:
 ```bash
 # Option 1: Set as private module
-go env -w GOPRIVATE=github.com/suisseworks/whagonsRLE
-go install github.com/suisseworks/whagonsRLE@latest
+go env -w GOPRIVATE=github.com/suisseworks/whagonsRTE
+go install github.com/suisseworks/whagonsRTE@latest
 
 # Option 2: Skip checksum verification
-GOSUMDB=off go install github.com/suisseworks/whagonsRLE@latest
+GOSUMDB=off go install github.com/suisseworks/whagonsRTE@latest
 ```
 
 ### Using Make Commands
@@ -33,7 +33,7 @@ make install-skip-checksum
 
 - **Real-time sync** between PostgreSQL and browser IndexedDB
 - **Minimal data transfer** - only sends changes, not full datasets
-- **WebSocket-based** communication using SockJS for reliability
+- **WebSocket-based** communication using native WebSockets
 - **Instant frontend updates** without manual refreshing
 - **Consistent data state** across database and frontend storage
 - **Dynamic tenant detection** - automatically connects to new tenants in real-time
@@ -82,10 +82,10 @@ The `sql/` directory contains scripts for manual setup or debugging:
 
 - Go 1.24.3
 - Fiber v2 (HTTP framework)
-- SockJS-Go v3 (WebSocket implementation)
+- Gorilla WebSocket (Native WebSocket implementation)
 - PostgreSQL driver with LISTEN/NOTIFY support
 
 ---
 
 **License:** MIT License - see [LICENSE](LICENSE) file  
-**Repository:** [github.com/suisseworks/whagonsRLE](https://github.com/suisseworks/whagonsRLE) 
+**Repository:** [github.com/suisseworks/whagonsRTE](https://github.com/suisseworks/whagonsRTE) 

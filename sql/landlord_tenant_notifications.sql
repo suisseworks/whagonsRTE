@@ -1,5 +1,5 @@
 -- PostgreSQL notification setup for landlord database tenants table
--- This script sets up triggers to notify whagonsRLE when tenants are added, updated, or deleted
+-- This script sets up triggers to notify whagonsRTE when tenants are added, updated, or deleted
 
 -- Create notification function
 CREATE OR REPLACE FUNCTION notify_tenant_changes()
@@ -53,5 +53,5 @@ CREATE TRIGGER tenant_changes_trigger
 -- UPDATE tenants SET domain = 'updated.example.com' WHERE name = 'test_tenant';
 -- DELETE FROM tenants WHERE name = 'test_tenant';
 
-COMMENT ON FUNCTION notify_tenant_changes() IS 'Sends PostgreSQL notifications when tenants table changes for whagonsRLE real-time sync';
-COMMENT ON TRIGGER tenant_changes_trigger ON tenants IS 'Triggers tenant change notifications for whagonsRLE'; 
+COMMENT ON FUNCTION notify_tenant_changes() IS 'Sends PostgreSQL notifications when tenants table changes for whagonsRTE real-time sync';
+COMMENT ON TRIGGER tenant_changes_trigger ON tenants IS 'Triggers tenant change notifications for whagonsRTE'; 

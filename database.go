@@ -246,7 +246,7 @@ func (e *RealtimeEngine) listenToLandlordTenantChanges() {
 	// Send a test notification to verify the connection is working
 	go func() {
 		time.Sleep(2 * time.Second) // Wait a bit for listener to be ready
-		testQuery := `SELECT pg_notify('tenant_changes', '{"operation":"CONNECTION_TEST","table":"tenants","message":"whagonsRLE listener connection test","timestamp":' || extract(epoch from now()) || '}')`
+		testQuery := `SELECT pg_notify('tenant_changes', '{"operation":"CONNECTION_TEST","table":"tenants","message":"whagonsRTE listener connection test","timestamp":' || extract(epoch from now()) || '}')`
 		if _, err := e.landlordDB.Exec(testQuery); err != nil {
 			log.Printf("⚠️  Failed to send test notification: %v", err)
 		} else {

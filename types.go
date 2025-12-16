@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/igm/sockjs-go/v3/sockjs"
+	"github.com/gorilla/websocket"
 )
 
 // TenantDB represents a tenant database configuration
@@ -26,39 +26,18 @@ type PostgreSQLNotification struct {
 	Timestamp float64         `json:"timestamp"`
 }
 
-// TaskRecord represents a task record from the wh_tasks table
-type TaskRecord struct {
-	ID               int     `json:"id"`
-	Name             string  `json:"name"`
-	WorkspaceID      int     `json:"workspace_id"`
-	TemplateID       int     `json:"template_id"`
-	SpotID           int     `json:"spot_id"`
-	StatusID         int     `json:"status_id"`
-	PriorityID       int     `json:"priority_id"`
-	StartDate        *string `json:"start_date"`
-	DueDate          *string `json:"due_date"`
-	ExpectedDuration int     `json:"expected_duration"`
-	ResponseDate     *string `json:"response_date"`
-	ResolutionDate   *string `json:"resolution_date"`
-	WorkDuration     int     `json:"work_duration"`
-	PauseDuration    int     `json:"pause_duration"`
-	CreatedAt        string  `json:"created_at"`
-	UpdatedAt        string  `json:"updated_at"`
-	TeamID           int     `json:"team_id"`
-}
-
 // PublicationMessage represents a clean publication message for the frontend
 type PublicationMessage struct {
-	Type        string      `json:"type"`
-	TenantName  string      `json:"tenant_name"`
-	Table       string      `json:"table"`
-	Operation   string      `json:"operation"`
-	NewData     *TaskRecord `json:"new_data,omitempty"`
-	OldData     *TaskRecord `json:"old_data,omitempty"`
-	Message     string      `json:"message"`
-	DBTimestamp float64     `json:"db_timestamp"`
-	ClientTime  string      `json:"client_timestamp"`
-	SessionId   string      `json:"sessionId"`
+	Type        string          `json:"type"`
+	TenantName  string          `json:"tenant_name"`
+	Table       string          `json:"table"`
+	Operation   string          `json:"operation"`
+	NewData     json.RawMessage `json:"new_data,omitempty"`
+	OldData     json.RawMessage `json:"old_data,omitempty"`
+	Message     string          `json:"message"`
+	DBTimestamp float64         `json:"db_timestamp"`
+	ClientTime  string          `json:"client_timestamp"`
+	SessionId   string          `json:"sessionId"`
 }
 
 // SystemMessage represents system messages (connection, echo, etc.)
@@ -71,15 +50,24 @@ type SystemMessage struct {
 	SessionId string      `json:"sessionId"`
 }
 
+// WebSocketSession wraps a WebSocket connection with session metadata
+type WebSocketSession struct {
+	Conn     *websocket.Conn
+	ID       string
+	Tenant   string
+	UserID   int
+	LastPing time.Time
+}
+
 // RealtimeEngine is the main engine that manages database connections and WebSocket sessions
 type RealtimeEngine struct {
 	landlordDB            *sql.DB
 	tenantDBs             map[string]*sql.DB
-	sessions              map[string]sockjs.Session        // Only active sessions that are actually communicating
-	negotiationSessions   map[string]sockjs.Session        // Sessions in negotiation phase
+	sessions              map[string]*WebSocketSession     // Active WebSocket sessions
 	authenticatedSessions map[string]*AuthenticatedSession // sessionID -> auth info
 	tokenCache            map[string]*CachedToken          // tokenHash -> cached auth info
 	mutex                 sync.RWMutex
+	upgrader              websocket.Upgrader
 }
 
 // AuthenticatedSession represents an authenticated WebSocket session

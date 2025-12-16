@@ -7,7 +7,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/igm/sockjs-go/v3/sockjs"
+	"github.com/gorilla/websocket"
 	"github.com/lib/pq"
 )
 
@@ -59,14 +59,62 @@ func (e *RealtimeEngine) listenToTenantPublications(tenantName, dbName string) {
 
 	defer listener.Close()
 
-	// Listen to the channel that corresponds to the publication
-	channelName := "whagons_tasks_changes"
-	if err := listener.Listen(channelName); err != nil {
-		log.Printf("❌ Failed to listen to channel %s for tenant %s: %v", channelName, tenantName, err)
+	// Query all tables with change triggers dynamically
+	// Get a connection to the tenant database to query triggers
+	e.mutex.RLock()
+	tenantDB, exists := e.tenantDBs[tenantName]
+	e.mutex.RUnlock()
+
+	if !exists {
+		log.Printf("❌ Tenant database connection not found for %s", tenantName)
 		return
 	}
 
-	log.Printf("✅ Listening to channel '%s' for tenant: %s", channelName, tenantName)
+	// Query for all triggers that match the pattern *_changes_trigger
+	// This dynamically finds all tables (wh_* and Spatie permission tables) with triggers
+	query := `
+		SELECT DISTINCT 
+			REPLACE(tgname, '_changes_trigger', '') as table_name
+		FROM pg_trigger 
+		WHERE tgname LIKE '%_changes_trigger'
+		AND tgisinternal = false
+		ORDER BY table_name
+	`
+
+	rows, err := tenantDB.Query(query)
+	if err != nil {
+		log.Printf("❌ Failed to query triggers for tenant %s: %v", tenantName, err)
+		log.Printf("⚠️  No channels will be subscribed for tenant %s", tenantName)
+		return
+	}
+	defer rows.Close()
+
+	var channels []string
+	for rows.Next() {
+		var tableName string
+		if err := rows.Scan(&tableName); err != nil {
+			log.Printf("⚠️  Error scanning trigger row: %v", err)
+			continue
+		}
+		channelName := fmt.Sprintf("whagons_%s_changes", tableName)
+		channels = append(channels, channelName)
+	}
+
+	if len(channels) == 0 {
+		log.Printf("⚠️  No triggers found for tenant %s - no channels will be subscribed", tenantName)
+		return
+	}
+
+	// Subscribe to all channels dynamically discovered
+	for _, channelName := range channels {
+		if err := listener.Listen(channelName); err != nil {
+			log.Printf("⚠️  Failed to listen to channel %s for tenant %s: %v", channelName, tenantName, err)
+			continue
+		}
+		log.Printf("✅ Listening to channel '%s' for tenant: %s", channelName, tenantName)
+	}
+
+	log.Printf("📡 Subscribed to %d channels for tenant: %s", len(channels), tenantName)
 
 	for {
 		select {
@@ -86,7 +134,7 @@ func (e *RealtimeEngine) listenToTenantPublications(tenantName, dbName string) {
 
 // handlePublicationNotification processes a PostgreSQL notification
 func (e *RealtimeEngine) handlePublicationNotification(tenantName string, notification *pq.Notification) {
-	log.Printf("📡 Publication notification received from %s: %s", tenantName, notification.Extra)
+	log.Printf("📡 Publication notification received from %s on channel '%s'", tenantName, notification.Channel)
 
 	// Parse the PostgreSQL notification payload once
 	var pgNotification PostgreSQLNotification
@@ -95,82 +143,41 @@ func (e *RealtimeEngine) handlePublicationNotification(tenantName string, notifi
 		return
 	}
 
-	// Create clean publication message
+	// Create clean publication message with raw JSON data (generic for all tables)
 	message := PublicationMessage{
 		Type:        "database",
 		TenantName:  tenantName,
 		Table:       pgNotification.Table,
 		Operation:   pgNotification.Operation,
+		NewData:     pgNotification.NewData,
+		OldData:     pgNotification.OldData,
 		DBTimestamp: pgNotification.Timestamp,
 		ClientTime:  time.Now().Format(time.RFC3339),
 	}
 
-	// Parse task data based on operation
+	// Generate a generic message based on operation
 	switch pgNotification.Operation {
 	case "INSERT":
-		if pgNotification.NewData != nil {
-			var newTask TaskRecord
-			if err := json.Unmarshal(pgNotification.NewData, &newTask); err != nil {
-				log.Printf("❌ Failed to parse new task data: %v", err)
-			} else {
-				message.NewData = &newTask
-			}
-		}
-		message.Message = fmt.Sprintf("New task '%s' created in %s",
-			getTaskName(message.NewData), tenantName)
-
+		message.Message = fmt.Sprintf("New record created in %s.%s", tenantName, pgNotification.Table)
 	case "UPDATE":
-		if pgNotification.NewData != nil {
-			var newTask TaskRecord
-			if err := json.Unmarshal(pgNotification.NewData, &newTask); err != nil {
-				log.Printf("❌ Failed to parse new task data: %v", err)
-			} else {
-				message.NewData = &newTask
-			}
-		}
-		if pgNotification.OldData != nil {
-			var oldTask TaskRecord
-			if err := json.Unmarshal(pgNotification.OldData, &oldTask); err != nil {
-				log.Printf("❌ Failed to parse old task data: %v", err)
-			} else {
-				message.OldData = &oldTask
-			}
-		}
-		message.Message = fmt.Sprintf("Task '%s' updated in %s",
-			getTaskName(message.NewData), tenantName)
-
+		message.Message = fmt.Sprintf("Record updated in %s.%s", tenantName, pgNotification.Table)
 	case "DELETE":
-		if pgNotification.OldData != nil {
-			var oldTask TaskRecord
-			if err := json.Unmarshal(pgNotification.OldData, &oldTask); err != nil {
-				log.Printf("❌ Failed to parse old task data: %v", err)
-			} else {
-				message.OldData = &oldTask
-			}
-		}
-		message.Message = fmt.Sprintf("Task '%s' deleted from %s",
-			getTaskName(message.OldData), tenantName)
+		message.Message = fmt.Sprintf("Record deleted from %s.%s", tenantName, pgNotification.Table)
+	default:
+		message.Message = fmt.Sprintf("%s operation on %s.%s", pgNotification.Operation, tenantName, pgNotification.Table)
 	}
 
 	log.Printf("🔄 Processed %s operation on %s.%s - broadcasting to sessions",
 		pgNotification.Operation, tenantName, pgNotification.Table)
 
-	// Broadcast to all connected SockJS sessions
+	// Broadcast to all connected WebSocket sessions
 	e.BroadcastPublicationMessage(message)
-}
-
-// getTaskName safely extracts the task name from a TaskRecord
-func getTaskName(task *TaskRecord) string {
-	if task == nil {
-		return "unknown"
-	}
-	return task.Name
 }
 
 // BroadcastPublicationMessage sends a publication message to authenticated sessions with tenant access
 func (e *RealtimeEngine) BroadcastPublicationMessage(message PublicationMessage) {
 	e.mutex.RLock()
-	sessions := make(map[string]sockjs.Session)
+	sessions := make(map[string]*WebSocketSession)
 	authSessions := make(map[string]*AuthenticatedSession)
 	for id, session := range e.sessions {
 		sessions[id] = session
@@ -183,7 +190,7 @@ func (e *RealtimeEngine) BroadcastPublicationMessage(message PublicationMessage)
 	broadcastCount := 0
 	authorizedCount := 0
 
-	for sessionID, session := range sessions {
+	for sessionID, wsSession := range sessions {
 		authSession, isAuthenticated := authSessions[sessionID]
 
 		if !isAuthenticated {
@@ -210,7 +217,8 @@ func (e *RealtimeEngine) BroadcastPublicationMessage(message PublicationMessage)
 			continue
 		}
 
-		if err := session.Send(string(jsonMessage)); err != nil {
+		wsSession.Conn.SetWriteDeadline(time.Now().Add(writeWait))
+		if err := wsSession.Conn.WriteMessage(websocket.TextMessage, jsonMessage); err != nil {
 			log.Printf("❌ Failed to send to session %s: %v", sessionID, err)
 			// Remove failed session
 			e.mutex.Lock()

@@ -15,10 +15,10 @@ publish:
 
 
 install:
-	go install github.com/suisseworks/whagonsRLE@latest
+	go install github.com/suisseworks/whagonsRTE@latest
 
 install-skip-checksum:
-	GOSUMDB=off go install github.com/suisseworks/whagonsRLE@latest
+	GOSUMDB=off go install github.com/suisseworks/whagonsRTE@latest
 
 
 run:

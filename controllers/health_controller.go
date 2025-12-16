@@ -30,7 +30,7 @@ func NewHealthController(engine HealthEngineInterface) *HealthController {
 
 // GetHealth provides a health check endpoint
 // @Summary Health check
-// @Description Returns the health status of WhagonsRLE
+// @Description Returns the health status of WhagonsRTE
 // @Tags health
 // @Accept json
 // @Produce json
@@ -52,7 +52,7 @@ func (hc *HealthController) GetHealth(c *fiber.Ctx) error {
 
 	response := fiber.Map{
 		"status":  status,
-		"service": "WhagonsRLE",
+		"service": "WhagonsRTE",
 		"version": "1.0.0",
 		"data": fiber.Map{
 			"active_sessions":      activeSessionCount,
@@ -98,7 +98,7 @@ func (hc *HealthController) GetMetrics(c *fiber.Ctx) error {
 			"auth_cache": cacheStats,
 			"system": fiber.Map{
 				"uptime":  time.Now().Format(time.RFC3339),
-				"service": "WhagonsRLE",
+				"service": "WhagonsRTE",
 				"version": "1.0.0",
 			},
 		},
